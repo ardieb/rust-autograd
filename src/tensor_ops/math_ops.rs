@@ -606,7 +606,6 @@ impl<T: Float> op::Op<T> for ErfCInv {
         let half = T::from::<f64>(0.5).unwrap();
         let sqrt_pi = T::from::<f64>(std::f64::consts::PI.sqrt()).unwrap();
 
-        let g = ctx.graph();
         let z = ctx.output();
         let gy = ctx.output_grad();
         let gz = super::neg(gy * half * sqrt_pi * super::exp(super::neg(super::square(z))));

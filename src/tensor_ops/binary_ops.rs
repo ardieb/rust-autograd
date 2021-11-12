@@ -239,20 +239,9 @@ impl<T: Float> op::Op<T> for DivOp {
     fn compute(&self, ctx: &mut crate::op::ComputeContext<T>) -> Result<(), crate::op::OpError> {
         let x0 = &ctx.input(0);
         let x1 = &ctx.input(1);
-        let shape0: &[usize] = x0.shape();
-        let shape1: &[usize] = x1.shape();
-        let is_scalar0 = shape0.len() == 0 || shape0 == [0];
-        let is_scalar1 = shape1.len() == 0 || shape1 == [1];
-        let ret = if is_scalar0 {
-            // a is a scalar
-            let x0_elem = x0[ndarray::IxDyn(&[])];
-            x1.map(move |&a| x0_elem / a)
-        } else if is_scalar1 {
-            // b is a scalar
-            let x1_elem = x1[ndarray::IxDyn(&[])];
-            let rhs = T::one() / x1_elem;
-            x0.mapv(|x0_elem| x0_elem * rhs)
-        } else if shape0 == shape1 {
+        let shape0 = x0.shape();
+        let shape1 = x1.shape();
+        let ret = if shape0 == shape1 {
             #[cfg(feature = "mkl")]
             {
                 use crate::{same_type, tensor_ops::blas_ffi::*};
