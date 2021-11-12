@@ -2890,6 +2890,63 @@ where
         })
 }
 
+pub fn polynomial<'graph, A, F: Float>(z: A, p: A) -> Tensor<'graph, F>
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let z = z.as_ref();
+    let p = p.as_ref();
+    let g = z.graph();
+    Tensor::builder(g)
+        .append_input(z.as_ref(), false)
+        .append_input(p.as_ref(), false)
+        .build(math_ops::Polynomial { deriv_degree: 0 })
+}
+
+pub fn erf<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let z= z.as_ref();
+    let g = z.graph();
+    Tensor::builder(g)
+        .append_input(z.as_ref(), false)
+        .build(math_ops::Erf)
+}
+
+pub fn erfc<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let z= z.as_ref();
+    let g = z.graph();
+    Tensor::builder(g)
+        .append_input(z.as_ref(), false)
+        .build(math_ops::ErfC)
+}
+
+pub fn erf_inv<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let z= z.as_ref();
+    let g = z.graph();
+    Tensor::builder(g)
+        .append_input(z.as_ref(), false)
+        .build(math_ops::ErfInv)
+}
+
+pub fn erfc_inv<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let z= z.as_ref();
+    let g = z.graph();
+    Tensor::builder(g)
+        .append_input(z.as_ref(), false)
+        .build(math_ops::ErfCInv)
+}
+
 pub(crate) fn control_dependencies<'graph, A, F: Float>(
     x: Tensor<'graph, F>,
     deps: &[A],

@@ -9,6 +9,7 @@ use crate::tensor_ops::*;
 use crate::Float;
 use ndarray;
 use ndarray::Zip;
+use statrs;
 
 pub struct Sin;
 pub struct Cos;
@@ -40,6 +41,9 @@ pub struct Ln;
 pub struct Pow<T: Float> {
     pub a: T,
 }
+pub struct Polynomial {
+    pub deriv_degree: usize,
+}
 pub struct LogSumExp {
     pub axis: isize,
     pub keep_dims: bool,
@@ -49,6 +53,10 @@ pub struct Transpose {
 }
 pub struct Lgamma;
 pub struct Digamma;
+pub struct Erf;
+pub struct ErfInv;
+pub struct ErfC;
+pub struct ErfCInv;
 
 #[inline(always)]
 fn equal_fn<T: Float>(a: T, b: T) -> T {
@@ -462,6 +470,148 @@ impl<T: Float> op::Op<T> for Transpose {
             });
         ctx.append_input_grad(Some(gx));
         ctx.append_input_grad(None);
+    }
+}
+
+impl<T: Float> op::Op<T> for Polynomial {
+    fn compute(&self, ctx: &mut op::ComputeContext<T>) -> Result<(), op::OpError> {
+        let z = &ctx.input(0);
+        let coeffs = &ctx.input(1);
+
+        let is_vector = coeffs.shape().len() <= 1
+            || (coeffs.shape().len() == 2 && (coeffs.shape()[0] == 1 || coeffs.shape()[1] == 1));
+
+        if !is_vector {
+            return Err(op::OpError::InvalidDims(
+                "Coefficients are not a valid polynomial vector a0 + a1*x + a2*x^2 + ...!".into(),
+            ));
+        }
+
+        let output = z.map(|z| {
+            if coeffs.len() <= self.deriv_degree {
+                return T::zero();
+            }
+            let (_, res) = coeffs
+                .slice(ndarray::s![self.deriv_degree..])
+                .fold((0, T::zero()), |(power, res), coeff| {
+                    (power + 1, res + *coeff * z.powi(power))
+                });
+            res
+        });
+        Ok(ctx.append_output(output))
+    }
+
+    fn grad(&self, ctx: &mut op::GradientContext<T>) {
+        let g = ctx.graph();
+        let z = &ctx.input(0);
+        let coeffs = &ctx.input(1);
+
+        let gy = ctx.output_grad();
+        let gz = gy
+            * Tensor::builder(g)
+                .append_input(z, false)
+                .append_input(coeffs, false)
+                .build(Polynomial { deriv_degree: 1 });
+
+        ctx.append_input_grad(Some(gz));
+        ctx.append_input_grad(None);
+    }
+}
+
+impl<T: Float> op::Op<T> for Erf {
+    fn compute(&self, ctx: &mut op::ComputeContext<T>) -> Result<(), op::OpError> {
+        let z = &ctx.input(0);
+        let output = z.mapv(move |x| {
+            let x64: f64 = num::NumCast::from(x).unwrap();
+            let c64: f64 = statrs::function::erf::erf(x64);
+            T::from(c64).unwrap()
+        });
+        ctx.append_output(output);
+        Ok(())
+    }
+
+    fn grad(&self, ctx: &mut op::GradientContext<T>) {
+        let z = ctx.input(0);
+        let gy = ctx.output_grad();
+
+        let two = T::from::<f64>(2.).unwrap();
+        let sqrt_pi = T::from::<f64>(std::f64::consts::PI.sqrt()).unwrap();
+        let gz = gy * two * super::exp(super::neg(super::square(z))) / sqrt_pi;
+
+        ctx.append_input_grad(Some(gz));
+    }
+}
+
+impl<T: Float> op::Op<T> for ErfInv {
+    fn compute(&self, ctx: &mut op::ComputeContext<T>) -> Result<(), op::OpError> {
+        let z = &ctx.input(0);
+        let output = z.mapv(move |x| {
+            let x64: f64 = num::NumCast::from(x).unwrap();
+            let c64: f64 = statrs::function::erf::erf_inv(x64);
+            T::from(c64).unwrap()
+        });
+        ctx.append_output(output);
+        Ok(())
+    }
+
+    fn grad(&self, ctx: &mut op::GradientContext<T>) {
+        let half = T::from::<f64>(0.5).unwrap();
+        let sqrt_pi = T::from::<f64>(std::f64::consts::PI.sqrt()).unwrap();
+
+        let z = ctx.output();
+        let gy = ctx.output_grad();
+        let gz = gy * half * sqrt_pi * super::exp(super::neg(super::square(z)));
+
+        ctx.append_input_grad(Some(gz));
+    }
+}
+
+impl<T: Float> op::Op<T> for ErfC {
+    fn compute(&self, ctx: &mut op::ComputeContext<T>) -> Result<(), op::OpError> {
+        let z = &ctx.input(0);
+        let output = z.mapv(move |x| {
+            let x64: f64 = num::NumCast::from(x).unwrap();
+            let c64: f64 = statrs::function::erf::erfc(x64);
+            T::from(c64).unwrap()
+        });
+        ctx.append_output(output);
+        Ok(())
+    }
+
+    fn grad(&self, ctx: &mut op::GradientContext<T>) {
+        let z = ctx.input(0);
+        let gy = ctx.output_grad();
+
+        let two = T::from::<f64>(2.).unwrap();
+        let sqrt_pi = T::from::<f64>(std::f64::consts::PI.sqrt()).unwrap();
+
+        let gz = super::neg(gy * two * super::exp(super::neg(super::square(z))) / sqrt_pi);
+        ctx.append_input_grad(Some(gz));
+    }
+}
+
+impl<T: Float> op::Op<T> for ErfCInv {
+    fn compute(&self, ctx: &mut op::ComputeContext<T>) -> Result<(), op::OpError> {
+        let z = &ctx.input(0);
+        let output = z.mapv(move |x| {
+            let x64: f64 = num::NumCast::from(x).unwrap();
+            let c64: f64 = statrs::function::erf::erfc_inv(x64);
+            T::from(c64).unwrap()
+        });
+        ctx.append_output(output);
+        Ok(())
+    }
+
+    fn grad(&self, ctx: &mut op::GradientContext<T>) {
+        let half = T::from::<f64>(0.5).unwrap();
+        let sqrt_pi = T::from::<f64>(std::f64::consts::PI.sqrt()).unwrap();
+
+        let g = ctx.graph();
+        let z = ctx.output();
+        let gy = ctx.output_grad();
+        let gz = super::neg(gy * half * sqrt_pi * super::exp(super::neg(super::square(z))));
+
+        ctx.append_input_grad(Some(gz));
     }
 }
 
@@ -1024,10 +1174,7 @@ use special::Gamma;
 macro_rules! impl_gamma {
     ($ty:ty, $digamma_fn:ident) => {
         impl op::Op<$ty> for Digamma {
-            fn compute(
-                &self,
-                ctx: &mut op::ComputeContext<$ty>,
-            ) -> Result<(), op::OpError> {
+            fn compute(&self, ctx: &mut op::ComputeContext<$ty>) -> Result<(), op::OpError> {
                 let x = ctx.input(0);
                 let y = x.mapv(move |a| a.digamma());
                 ctx.append_output(y);
@@ -1041,10 +1188,7 @@ macro_rules! impl_gamma {
         }
 
         impl op::Op<$ty> for Lgamma {
-            fn compute(
-                &self,
-                ctx: &mut op::ComputeContext<$ty>,
-            ) -> Result<(), op::OpError> {
+            fn compute(&self, ctx: &mut op::ComputeContext<$ty>) -> Result<(), op::OpError> {
                 let x = ctx.input(0);
                 let y = x.mapv(move |a| a.ln_gamma().0);
                 ctx.append_output(y);
