@@ -2941,11 +2941,24 @@ pub fn erfc_inv<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
 {
-    let z= z.as_ref();
+    let z = z.as_ref();
     let g = z.graph();
     Tensor::builder(g)
         .append_input(z.as_ref(), false)
         .build(math_ops::ErfCInv)
+}
+
+pub fn finite_difference<'graph, A, F: Float>(stencil: A, hx: A, m: usize, n: usize) -> Tensor<'graph, F>
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let stencil = stencil.as_ref();
+    let hx = hx.as_ref();
+    let g = stencil.graph();
+    Tensor::builder(g)
+        .append_input(stencil.as_ref(), false)
+        .append_input(hx.as_ref(), false)
+        .build(finite_difference::FiniteDifference { order: m, accuracy: n })
 }
 
 pub(crate) fn control_dependencies<'graph, A, F: Float>(
