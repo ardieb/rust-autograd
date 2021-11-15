@@ -14,11 +14,11 @@ pub struct ExpandDims;
 pub struct Squeeze;
 
 pub struct Slice {
-    pub indices: Vec<ndarray::SliceOrIndex>,
+    pub indices: Vec<ndarray::SliceInfoElem>,
 }
 
 pub struct SliceGrad {
-    pub indices: Vec<ndarray::SliceOrIndex>,
+    pub indices: Vec<ndarray::SliceInfoElem>,
 }
 
 pub struct Split {
@@ -427,29 +427,31 @@ impl<T: Float> op::Op<T> for GatherGrad {
         for (gy_sub, &i) in gy.axis_iter(ndarray::Axis(axis)).zip(indices) {
             let i = i.to_isize().unwrap();
             // get gx's sub view
-            let gx_sliced = gx.slice_mut(
-                ndarray::SliceInfo::<_, ndarray::IxDyn>::new(
-                    (0..param.ndim())
-                        .map(|dim| {
-                            if dim == axis {
-                                ndarray::SliceOrIndex::Slice {
-                                    start: i,
-                                    end: Some(i + 1),
-                                    step: 1,
+            let gx_sliced = unsafe {
+                gx.slice_mut(
+                    ndarray::SliceInfo::<_, ndarray::IxDyn, ndarray::IxDyn>::new(
+                        (0..param.ndim())
+                            .map(|dim| {
+                                if dim == axis {
+                                    ndarray::SliceInfoElem::Slice {
+                                        start: i,
+                                        end: Some(i + 1),
+                                        step: 1,
+                                    }
+                                } else {
+                                    ndarray::SliceInfoElem::Slice {
+                                        start: 0,
+                                        end: None,
+                                        step: 1,
+                                    }
                                 }
-                            } else {
-                                ndarray::SliceOrIndex::Slice {
-                                    start: 0,
-                                    end: None,
-                                    step: 1,
-                                }
-                            }
-                        })
-                        .collect::<Vec<_>>(),
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .unwrap()
+                    .as_ref(),
                 )
-                .unwrap()
-                .as_ref(),
-            );
+            };
 
             // squeeze
             let mut gx_sliced = gx_sliced.index_axis_move(ndarray::Axis(axis), 0);
@@ -636,14 +638,14 @@ impl<T: Float> op::Op<T> for ConcatGrad {
             .map(move |_axis| {
                 if _axis == axis {
                     // partial region
-                    ndarray::SliceOrIndex::Slice {
+                    ndarray::SliceInfoElem::Slice {
                         start: start_idx as isize,
                         end: Some(region_len),
                         step: 1,
                     }
                 } else {
                     // full slice
-                    ndarray::SliceOrIndex::Slice {
+                    ndarray::SliceInfoElem::Slice {
                         start: 0,
                         end: None,
                         step: 1,
@@ -653,14 +655,16 @@ impl<T: Float> op::Op<T> for ConcatGrad {
             .collect::<Vec<_>>();
 
         // Clone the *view*
-        match ndarray::SliceInfo::new(indices) {
-            Ok(ok) => {
-                // do slice
-                let ret = gy.clone().slice_move(ok.as_ref());
-                ctx.append_output_view(ret);
-                Ok(())
+        unsafe {
+            match ndarray::SliceInfo::<_, ndarray::IxDyn, ndarray::IxDyn>::new(indices) {
+                Ok(ok) => {
+                    // do slice
+                    let ret = gy.clone().slice_move(ok.as_ref());
+                    ctx.append_output_view(ret);
+                    Ok(())
+                }
+                Err(e) => Err(op::OpError::NdArrayError("ConcatGrad: ".to_string(), e)),
             }
-            Err(e) => Err(op::OpError::NdArrayError("ConcatGrad: ".to_string(), e)),
         }
     }
 
@@ -696,7 +700,10 @@ impl<T: Float> op::Op<T> for Split {
         let axis = ndarray_ext::normalize_negative_axis(self.axis, x.ndim());
         let mut ret = x.clone();
         let indices = make_indices_for_split(x, self.start_index, self.end_index, axis);
-        ret.slice_collapse(&indices);
+        unsafe {
+            let info = ndarray::SliceInfo::<_, ndarray::IxDyn, ndarray::IxDyn>::new(&indices[..]).unwrap();
+            ret.slice_collapse(info);
+        }
         ctx.append_output_view(ret);
         Ok(())
     }
@@ -726,13 +733,15 @@ impl<T: Float> op::Op<T> for SplitGrad {
         let axis = ndarray_ext::normalize_negative_axis(self.axis, x.ndim());
         let indices = make_indices_for_split(&x, self.start_index, self.end_index, axis);
 
-        gx.slice_mut(
-            ndarray::SliceInfo::<_, ndarray::IxDyn>::new(indices)
-                .unwrap()
-                .as_ref(),
-        )
-        .zip_mut_with(&ctx.input(1), |a, &g| *a = g);
-        ctx.append_output(gx);
+        unsafe {
+            gx.slice_mut(
+                ndarray::SliceInfo::<_, ndarray::IxDyn, ndarray::IxDyn>::new(indices)
+                    .unwrap()
+                    .as_ref(),
+            )
+            .zip_mut_with(&ctx.input(1), |a, &g| *a = g);
+            ctx.append_output(gx);
+        }
         Ok(())
     }
 
@@ -747,20 +756,20 @@ fn make_indices_for_split<T: Float>(
     start_index: isize,
     end_index: isize,
     axis: usize,
-) -> Vec<ndarray::SliceOrIndex> {
+) -> Vec<ndarray::SliceInfoElem> {
     let ndim = x.ndim();
     assert!(ndim > axis, "Wrong split axis");
     (0..ndim)
         .map(|i| {
             if i == axis {
-                ndarray::SliceOrIndex::Slice {
+                ndarray::SliceInfoElem::Slice {
                     start: start_index,
                     end: Some(end_index),
                     step: 1,
                 }
             } else {
                 // full slice
-                ndarray::SliceOrIndex::Slice {
+                ndarray::SliceInfoElem::Slice {
                     start: 0,
                     end: None,
                     step: 1,
@@ -773,7 +782,10 @@ fn make_indices_for_split<T: Float>(
 impl<T: Float> op::Op<T> for Slice {
     fn compute(&self, ctx: &mut crate::op::ComputeContext<T>) -> Result<(), crate::op::OpError> {
         let mut y = ctx.input(0);
-        y.slice_collapse(&self.indices);
+        unsafe {
+            let info = ndarray::SliceInfo::<_, ndarray::IxDyn, ndarray::IxDyn>::new(&self.indices[..]).unwrap();
+            y.slice_collapse(info);
+        }
         ctx.append_output_view(y);
         Ok(())
     }
@@ -798,12 +810,14 @@ impl<T: Float> op::Op<T> for SliceGrad {
         let x = ctx.input(0);
         let mut gx = NdArray::zeros(x.shape());
         // sliced view
-        gx.slice_mut(
-            ndarray::SliceInfo::<_, ndarray::IxDyn>::new(&self.indices)
-                .unwrap()
-                .as_ref(),
-        )
-        .zip_mut_with(&ctx.input(1), |a, &g| *a = g);
+        unsafe {
+            gx.slice_mut(
+                ndarray::SliceInfo::<_, ndarray::IxDyn, ndarray::IxDyn>::new(&self.indices)
+                    .unwrap()
+                    .as_ref(),
+            )
+            .zip_mut_with(&ctx.input(1), |a, &g| *a = g);
+        }
         ctx.append_output(gx);
         Ok(())
     }
