@@ -15,8 +15,8 @@ use ndarray::prelude::*;
 use ndarray_linalg::Solve;
 
 pub struct FiniteDifference {
-    order: usize,
-    accuracy: usize
+    pub order: usize,
+    pub accuracy: usize
 }
 
 impl<F: Float> op::Op<F> for FiniteDifference {
