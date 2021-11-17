@@ -2891,6 +2891,13 @@ where
         })
 }
 
+/// Polynomial Evaluation
+/// 
+/// Coefficients are represented as a 1d vector
+/// * `p`: Polynomial coeffcients in the form of [a0, a1, a2, ..., an].
+/// * `z`: Values to evaluate the polynomial at of any shape.
+/// 
+/// * `output`: The values of `z` evaluated at the polynomial `p`.
 pub fn polynomial<'graph, A, F: Float>(z: A, p: A) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
@@ -2904,6 +2911,9 @@ where
         .build(math_ops::Polynomial { deriv_degree: 0 })
 }
 
+/// Error function
+/// 
+/// * `z`: The points to evaluate the error function at.
 pub fn erf<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
@@ -2915,6 +2925,9 @@ where
         .build(math_ops::Erf)
 }
 
+/// Error function compliment
+/// 
+/// * `z`: The points to evaluate the error function at.
 pub fn erfc<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
@@ -2926,6 +2939,9 @@ where
         .build(math_ops::ErfC)
 }
 
+/// Error function inverse
+/// 
+/// * `z`: The points to evaluate the error inverse function at.
 pub fn erf_inv<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
@@ -2937,6 +2953,9 @@ where
         .build(math_ops::ErfInv)
 }
 
+/// Error function inverse complement
+/// 
+/// * `z`: The points to evaluate the error function complement inverse at.
 pub fn erfc_inv<'graph, A, F: Float>(z: A) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
@@ -2948,17 +2967,24 @@ where
         .build(math_ops::ErfCInv)
 }
 
-pub fn finite_difference<'graph, A, F: Float>(stencil: A, hx: A, m: usize, n: usize) -> Tensor<'graph, F>
+/// Finite difference derivative approximation.
+/// 
+/// * `stencil`: The stencil evaluation of the function, in column vector order.
+/// * `hx`: The step size used to produce the stencil.
+/// * `m`: The order of the derivative.
+/// * `n`: The accuracy of the derivative.
+pub fn finite_difference<'graph, A, F: Float>(m: usize, n: usize, h: A, points: &[A]) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
 {
-    let stencil = stencil.as_ref();
-    let hx = hx.as_ref();
-    let g = stencil.graph();
-    Tensor::builder(g)
-        .append_input(stencil.as_ref(), false)
-        .append_input(hx.as_ref(), false)
-        .build(finite_difference::FiniteDifference { order: m, accuracy: n })
+    let h = h.as_ref();
+    let g = h.graph();
+    let mut builder = Tensor::builder(g)
+        .append_input(h.as_ref(), false);
+    for stencil in points.into_iter() {
+        builder = builder.append_input(stencil.as_ref(), false);
+    }
+    builder.build(finite_difference::FiniteDifference { order: m, accuracy: n })
 }
 
 pub(crate) fn control_dependencies<'graph, A, F: Float>(

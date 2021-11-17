@@ -90,6 +90,10 @@
 /// re-exported for convenience and version-compatibility
 pub extern crate ndarray;
 
+#[allow(unused_imports)]
+/// re-exported for convenience and version-compatibility
+pub extern crate num;
+
 #[cfg(all(feature = "blas", feature = "intel-mkl"))]
 extern crate intel_mkl_src;
 
@@ -100,7 +104,6 @@ extern crate cblas_sys;
 
 extern crate libc;
 extern crate matrixmultiply;
-extern crate num;
 extern crate num_traits;
 /// re-exported for convenience and version-compatibility
 pub extern crate rand;

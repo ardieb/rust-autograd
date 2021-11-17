@@ -1,8 +1,8 @@
-use crate::ndarray_ext::{NdArray, NdArrayView};
+use crate::ndarray_ext::NdArray;
 use crate::op;
 #[cfg(all(feature = "blas", feature = "intel-mkl"))]
 use crate::same_type;
-use crate::tensor::Tensor;
+
 #[cfg(all(feature = "blas", feature = "intel-mkl"))]
 use crate::tensor_ops::blas_ffi::*;
 use crate::tensor_ops::*;
@@ -16,35 +16,33 @@ use ndarray_linalg::Solve;
 
 pub struct FiniteDifference {
     pub order: usize,
-    pub accuracy: usize
+    pub accuracy: usize,
 }
 
 impl<F: Float> op::Op<F> for FiniteDifference {
     fn compute(&self, ctx: &mut op::ComputeContext<F>) -> Result<(), op::OpError> {
-        let coeffs = finite_difference_coeffs(self.order, self.accuracy).mapv(|x| F::from(x).unwrap());
-        let stencil = ctx.input(0);
-
-        if coeffs.shape()[0] != stencil.shape()[0] {
-            return Err(op::OpError::IncompatibleShape(format!("Coefficients of length {} do not match stencil of shape {:?}", coeffs.shape()[0], stencil.shape())));
+        let coeffs =
+            finite_difference_coeffs(self.order, self.accuracy).mapv(|x| F::from(x).unwrap());
+        if coeffs.len() != ctx.num_inputs() - 1 {
+            return Err(op::OpError::IncompatibleShape(
+                "The length of the coefficients does not match the number of stencil points!"
+                    .into(),
+            ));
         }
 
-        let hx = ctx.input(1);
-        let m = F::from(self.order).unwrap();
-        let hm = hx.mapv(|h| h.powf(m));
-        let output_shape = if stencil.shape().len() <= 1 { &[1] } else { &stencil.shape()[1..] };
+        let h = &ctx.input(0);
+        let denom = h.mapv(|h| h.powi(self.order as i32));
 
-        if hx.shape() != output_shape {
-            return Err(op::OpError::IncompatibleShape(format!("Difference of shape {:?} does not match output shape of {:?}", hx.shape(), output_shape)));
+        let mut output = ctx.input(1).mapv(|s| s * coeffs[0]);
+        for i in 2..ctx.num_inputs() {
+            output
+                .iter_mut()
+                .zip(ctx.input(i).mapv(|s| s * coeffs[i - 1]).iter())
+                .for_each(|(out, &diff)| {
+                    *out = *out + diff;
+                })
         }
-
-        let mut output = ndarray::ArrayD::<F>::zeros(ndarray::IxDyn(output_shape));
-        for (&coeff, stencil_points) in coeffs
-            .iter()
-            .zip(stencil.axis_iter(ndarray::Axis(0))) 
-        {
-             output = output + stencil_points.mapv(|s| coeff * s);   
-        }
-        output = output / hm;
+        output = output / denom;
 
         ctx.append_output(output);
         Ok(())
@@ -55,7 +53,6 @@ impl<F: Float> op::Op<F> for FiniteDifference {
         ctx.append_input_grad(None);
     }
 }
-
 
 fn central_coeffs(order: usize, accuracy: usize) -> NdArray<f64> {
     let arr = match order {
