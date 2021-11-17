@@ -387,7 +387,7 @@ fn argx_helper<T: Float>(
             ndarray::Zip::from(&mut sub)
                 .and(&mut found)
                 .and(&maxed)
-                .apply(|r, f, m| {
+                .for_each(|r, f, m| {
                     let z = r == m && !*f;
                     if z {
                         *f = true;

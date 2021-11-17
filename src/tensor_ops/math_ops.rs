@@ -144,7 +144,7 @@ macro_rules! impl_cmp_op {
                         Zip::from(&mut result)
                             .and_broadcast(x0)
                             .and(x1)
-                            .apply(|r, a, b| *r = $assign(a.clone(), b.clone()));
+                            .for_each(|r, a, b| *r = $assign(a.clone(), b.clone()));
                         result
                     } else if size0 > size1 {
                         panic!(
@@ -160,7 +160,7 @@ macro_rules! impl_cmp_op {
                         Zip::from(&mut result)
                             .and(x0)
                             .and(x1)
-                            .apply(|r, a, b| *r = $assign(a.clone(), b.clone()));
+                            .for_each(|r, a, b| *r = $assign(a.clone(), b.clone()));
                         result
                     }
                 };
