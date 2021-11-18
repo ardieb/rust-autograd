@@ -17,24 +17,24 @@ use ndarray_linalg::Solve;
 pub struct FiniteDifference {
     pub order: usize,
     pub accuracy: usize,
+    pub step: f64
 }
 
 impl<F: Float> op::Op<F> for FiniteDifference {
     fn compute(&self, ctx: &mut op::ComputeContext<F>) -> Result<(), op::OpError> {
         let coeffs =
             finite_difference_coeffs(self.order, self.accuracy).mapv(|x| F::from(x).unwrap());
-        if coeffs.len() != ctx.num_inputs() - 1 {
+        if coeffs.len() != ctx.num_inputs() {
             return Err(op::OpError::IncompatibleShape(
                 "The length of the coefficients does not match the number of stencil points!"
                     .into(),
             ));
         }
 
-        let h = &ctx.input(0);
-        let denom = h.mapv(|h| h.powi(self.order as i32));
+        let denom = F::from(self.step.powi(self.order as i32)).unwrap();
 
         let mut output = ctx.input(1).mapv(|s| s * coeffs[0]);
-        for i in 2..ctx.num_inputs() {
+        for i in 1..ctx.num_inputs() {
             output
                 .iter_mut()
                 .zip(ctx.input(i).mapv(|s| s * coeffs[i - 1]).iter())
@@ -42,15 +42,13 @@ impl<F: Float> op::Op<F> for FiniteDifference {
                     *out = *out + diff;
                 })
         }
-        output = output / denom;
 
-        ctx.append_output(output);
+        ctx.append_output(output.mapv(|out| out / denom));
         Ok(())
     }
 
     fn grad(&self, ctx: &mut op::GradientContext<F>) {
-        ctx.append_input_grad(None);
-        ctx.append_input_grad(None);
+        panic!("Cannot differentiate the finite difference approximation.");
     }
 }
 

@@ -3014,18 +3014,16 @@ where
 /// * `hx`: The step size used to produce the stencil.
 /// * `m`: The order of the derivative.
 /// * `n`: The accuracy of the derivative.
-pub fn finite_difference<'graph, A, F: Float>(m: usize, n: usize, h: A, points: &[A]) -> Tensor<'graph, F>
+pub fn finite_difference<'graph, A, F: Float>(m: usize, n: usize, h: F, points: &[A]) -> Tensor<'graph, F>
 where
     A: AsRef<Tensor<'graph, F>> + Copy
 {
-    let h = h.as_ref();
-    let g = h.graph();
-    let mut builder = Tensor::builder(g)
-        .append_input(h.as_ref(), false);
+    let g = points[0].as_ref().graph();
+    let mut builder = Tensor::builder(g);
     for stencil in points.into_iter() {
         builder = builder.append_input(stencil.as_ref(), false);
     }
-    builder.build(finite_difference::FiniteDifference { order: m, accuracy: n })
+    builder.build(finite_difference::FiniteDifference { order: m, accuracy: n, step: num::NumCast::from(h).unwrap() })
 }
 
 pub(crate) fn control_dependencies<'graph, A, F: Float>(
