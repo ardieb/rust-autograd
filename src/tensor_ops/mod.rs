@@ -2967,6 +2967,47 @@ where
         .build(math_ops::ErfCInv)
 }
 
+/// Normal cumulative distribution function of x with.
+/// 
+/// * `x`: The points to compute the cdf at.
+/// * `mean`: The mean of the normal distribution.
+/// * `std`: The standard deviation of the normal distribution.
+pub fn normal_cdf<'graph, A, F: Float>(
+    x: A,
+    mean: F,
+    std: F,
+) -> Tensor<'graph, F> 
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let x = x.as_ref();
+    let half = F::from(0.5f64).unwrap();
+    let sqrt2 = F::from(std::f64::consts::SQRT_2).unwrap();
+    let z = neg(x - mean) / (std * sqrt2);
+    erfc(&z) * half
+}
+
+
+/// Normal point distribution function of x with.
+/// 
+/// * `x`: The points to compute the cdf at.
+/// * `mean`: The mean of the normal distribution.
+/// * `std`: The standard deviation of the normal distribution.
+pub fn pdf<'graph, A, F: Float>(
+    x: A,
+    mean: F,
+    std: F,
+) -> Tensor<'graph, F> 
+where
+    A: AsRef<Tensor<'graph, F>> + Copy
+{
+    let x = x.as_ref();
+    let half = F::from(0.5f64).unwrap();
+    let sqrt2pi = F::from((2. * std::f64::consts::PI).sqrt()).unwrap();
+    let d = (x - mean) / std;
+    exp(d * d * - half) / (sqrt2pi * std)
+}
+
 /// Finite difference derivative approximation.
 /// 
 /// * `stencil`: The stencil evaluation of the function, in column vector order.
