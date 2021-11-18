@@ -108,7 +108,7 @@ extern crate num_traits;
 /// re-exported for convenience and version-compatibility
 pub extern crate rand;
 extern crate rand_distr;
-extern crate rayon;
+pub extern crate rayon;
 extern crate rustc_hash;
 extern crate serde_json;
 pub(crate) extern crate smallvec;
@@ -117,6 +117,7 @@ extern crate uuid;
 extern crate serde_derive;
 extern crate approx;
 extern crate special;
+pub extern crate statrs;
 
 pub mod evaluation;
 mod gradient;
